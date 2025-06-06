@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="card-header">
+                <h3>Login</h3>
+            </div>
+            <div class="card-body">
+                         <div id="error-message" class="alert alert-danger" style="display: none;"></div>
+                        
+                         <!-- Loading Indicator -->
+                         <div id="loadingIndicator" class="text-center">
+                             <div class="spinner-border text-primary" role="status">
+                                 <span class="visually-hidden">Loading...</span>
+                             </div>
+                             <p class="mt-2">Checking authentication state...</p>
+                         </div>
+
+                         <!-- Login Form (Initially hidden) -->
+                        <form id="loginForm" style="display: none;">
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="email" name="email" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="password" class="form-label">Password</label>
+                                <input type="password" class="form-control" id="password" name="password" required>
+                            </div>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">Login</button>
+                            </div>
+                        </form>
+                        <div class="text-center mt-3">
+                            <p>Don't have an account? <a href="register.html">Register here</a></p>
+                             <p><a href="#" id="sendVerificationEmailLink" style="display:none;">Resend Verification Email</a></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Firebase App (the core Firebase SDK) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <!-- Firebase Authentication -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    
+    <!-- Your Firebase config and custom script -->
+    <script src="js/firebase_auth.js"></script>
+
+    <script>
+        const loginForm = document.getElementById('loginForm');
+        const errorMessageDiv = document.getElementById('error-message');
+        const sendVerificationEmailLink = document.getElementById('sendVerificationEmailLink');
+        const loadingIndicator = document.getElementById('loadingIndicator'); // Get loading indicator
+
+        // Helper function to get URL parameters
+        function getParameterByName(name, url = window.location.href) {
+            name = name.replace(/[[\]]/g, '\\$&'); // Escape special characters for regex
+            const regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)');
+            const results = regex.exec(url);
+            if (!results) return null;
+            if (!results[2]) return '';
+            return decodeURIComponent(results[2].replace(/\+/g, ' '));
+        }
+
+        // Check if coming from verified redirect
+        const isVerifiedRedirect = getParameterByName('verified') === 'true';
+
+        // Initially show loading if it's a verified redirect, or if state is not yet known
+        if (isVerifiedRedirect || auth.currentUser === undefined) { // Check auth.currentUser as an initial guess if state is pending
+             loginForm.style.display = 'none';
+             loadingIndicator.style.display = 'block';
+        } else if (auth.currentUser) { // If user is already logged in on initial load (not verified redirect)
+             console.log("User is already logged in on initial load (not verified redirect). Redirecting.");
+             window.location.href = 'dashboard.html';
+        } else { // No user logged in on initial load (not verified redirect)
+             loginForm.style.display = 'block';
+             loadingIndicator.style.display = 'none';
+        }
+
+        // Check authentication state changes
+        // We keep the loading indicator visible based on the logic below.
+        auth.onAuthStateChanged((user) => {
+            console.log("Auth state changed. User:", user);
+
+            const verifiedRedirect = isVerifiedRedirect; // Use the constant value
+
+            if (verifiedRedirect) {
+                 // If coming from verification redirect, always hide loading and show form ONLY when user is null
+                 if (!user) {
+                     console.log("Verified redirect and user is null. Showing login form.");
+                     loadingIndicator.style.display = 'none'; // Hide loading indicator
+                     loginForm.style.display = 'block'; // Show login form
+                      // Ensure the error message is hidden initially if the form is shown
+                     hideError();
+                     // Remove the ?verified=true flag from the URL after handling it
+                     if (verifiedRedirect) {
+                         history.replaceState({}, document.title, window.location.pathname);
+                     }
+
+                 } else {
+                     // If user is unexpectedly not null during a verified redirect,
+                     // force sign out and wait for the state change.
+                     console.log("Verified redirect and user is NOT null. Forcing sign out. Waiting for state change...");
+                     // Keep loading indicator visible for now, onAuthStateChanged will fire again.
+                      firebase.auth().signOut().then(() => {
+                           console.log("Forced sign out successful. Auth state should update.");
+                           // onAuthStateChanged will fire again with null user
+                      }).catch((error) => {
+                           console.error("Error forcing sign out:", error);
+                           // Even if sign out fails, hide loading and show the form as a fallback
+                           loadingIndicator.style.display = 'none';
+                           loginForm.style.display = 'block';
+                           displayError("Could not sign you out automatically. Please try again.");
+                            // Attempt to remove the flag even on error
+                           if (verifiedRedirect) {
+                              history.replaceState({}, document.title, window.location.pathname);
+                           }
+                      });
+                 }
+
+            } else if (user) {
+                // User is signed in and NOT coming from a verified redirect.
+                // This is a normal logged-in state, redirect to dashboard.
+                console.log("User is logged in (not verified redirect). Redirecting to dashboard.");
+                window.location.href = 'dashboard.html';
+
+            } else {
+                // No user is signed in and NOT from a verified redirect.
+                // This is a normal logged-out state, show the login form.
+                console.log("No user logged in (not verified redirect). Showing login form.");
+                loadingIndicator.style.display = 'none'; // Hide loading indicator
+                loginForm.style.display = 'block'; // Show login form
+                 // Ensure the error message is hidden initially if the form is shown
+                hideError();
+            }
+        });
+
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault(); // Prevent default form submission
+
+            const email = loginForm.email.value;
+            const password = loginForm.password.value;
+
+            hideError(); // Hide previous errors
+            sendVerificationEmailLink.style.display = 'none'; // Hide resend link initially
+
+            // Call the Firebase login function
+            loginUser(email, password)
+                .then(() => {
+                    // Login successful
+                    console.log('User logged in!');
+                    // Redirect to dashboard or protected page
+                    
+                    // Replace the current history entry (login page) with the dashboard page
+                    // This prevents going back to the login page after logging in
+                    history.replaceState(null, '', 'dashboard.html');
+                    
+                    window.location.href = 'dashboard.html';
+                })
+                 .catch((error) => {
+                    // Handle Firebase login errors
+                    console.error('Login error:', error);
+                    let friendlyErrorMessage = "An unexpected error occurred. Please try again."; // Default generic message
+
+                    // Check for specific Firebase auth error codes or messages related to invalid credentials
+                    // This condition covers standard invalid credential codes and the raw JSON message text.
+                    if (error.code === 'auth/invalid-email' || 
+                        error.code === 'auth/user-not-found' || 
+                        error.code === 'auth/wrong-password' ||
+                        (typeof error.message === 'string' && error.message.includes('INVALID_LOGIN_CREDENTIALS'))
+                       ) 
+                    {
+                        friendlyErrorMessage = "invalid login credintial";
+                    } else if (error.code === 'auth/user-disabled') {
+                        friendlyErrorMessage = "Your account has been disabled.";
+                    } else if (error.code === 'auth/too-many-requests') {
+                        friendlyErrorMessage = "Too many login attempts. Please try again later.";
+                    } 
+                    // For any other error codes or messages not caught above, the default generic message will be used.
+
+                    displayError(friendlyErrorMessage);
+                    // If user exists but email not verified, show resend link
+                    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                        // We can't reliably check if the user exists and is unverified just from these errors
+                        // A better approach would be to check auth state changes or use cloud functions
+                        // For simplicity, let's rely on the redirect in loginUser for unverified emails
+                         // However, if you want to offer resend on *any* login error (risky, but simple):
+                         // sendVerificationEmailLink.style.display = 'block';
+                    }
+                });
+        });
+        
+         // Add event listener for resend verification email link
+         sendVerificationEmailLink.addEventListener('click', (e) => {
+             e.preventDefault();
+             const email = loginForm.email.value;
+              if (email) {
+                  // We need to get the user object to send verification email
+                  // This requires the user to be signed in, which might not be the case after an error
+                  // A better flow for resending would be on the verify_email_reminder.html page
+                  // For now, let's just log a message or redirect
+                  console.log("Resend verification email requested for", email);
+                   alert("Please go back to the registration page or check your email for the verification link.");
+                  // Or redirect: window.location.href = 'verify_email_reminder.html';
+             } else {
+                 displayError("Please enter your email to resend the verification link.");
+             }
+         });
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 

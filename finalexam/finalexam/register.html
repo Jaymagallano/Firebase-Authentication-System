@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .requirement-met {
+            color: #00C851;
+            font-weight: 500;
+        }
+        .requirement-not-met {
+            color: #ff4444;
+        }
+        .password-requirements {
+            display: none;
+        }
+        .strength-weak { background-color: #ff4444; width: 25%; }
+        .strength-medium { background-color: #ffbb33; width: 50%; }
+        .strength-strong { background-color: #00C851; width: 75%; }
+        .strength-very-strong { background-color: #007E33; width: 100%; }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="card-header">
+                <h3>Register</h3>
+            </div>
+            <div class="card-body">
+                        <form id="registerForm">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="username" required>
+                                <!-- Note: Firebase Auth does not store usernames directly. -->
+                                <!-- You need a database (like Firestore) to save this username linked to the user's UID. -->
+                            </div>
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email address</label>
+                                <input type="email" class="form-control" id="email" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="password" class="form-label">Password</label>
+                                <input type="password" class="form-control" id="password" required>
+                                <div class="password-strength"></div>
+                                <div class="password-requirements" id="passwordRequirements">
+                                    <div id="length" class="requirement-not-met">At least 8 characters</div>
+                                    <div id="uppercase" class="requirement-not-met">At least one uppercase letter</div>
+                                    <div id="lowercase" class="requirement-not-met">At least one lowercase letter</div>
+                                    <div id="number" class="requirement-not-met">At least one number</div>
+                                    <div id="special" class="requirement-not-met">At least one special character</div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="confirmPassword" class="form-label">Confirm Password</label>
+                                <input type="password" class="form-control" id="confirmPassword" required>
+                            </div>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">Register</button>
+                            </div>
+                        </form>
+                        <div class="text-center mt-3">
+                            <p>Already have an account? <a href="login.html">Login here</a></p>
+                        </div>
+                        <div id="error-message" class="alert alert-danger mt-3" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase App (the core Firebase SDK) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <!-- Firebase Authentication -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    
+    <!-- Your Firebase config and custom script -->
+    <script src="js/firebase_auth.js"></script>
+    
+    <script>
+        const registerForm = document.getElementById('registerForm');
+        const errorMessageDiv = document.getElementById('error-message');
+        const emailInput = document.getElementById('email'); // Added email input
+        const usernameInput = document.getElementById('username'); // Added username input
+        const passwordInput = document.getElementById('password');
+        const confirmPasswordInput = document.getElementById('confirmPassword');
+        const strengthIndicator = document.querySelector('.password-strength');
+        const passwordRequirementsDiv = document.getElementById('passwordRequirements'); // Get the requirements div
+
+        // Password strength requirements
+        const requirements = {
+            length: { regex: /.{8,}/, element: document.getElementById('length') },
+            uppercase: { regex: /[A-Z]/, element: document.getElementById('uppercase') },
+            lowercase: { regex: /[a-z]/, element: document.getElementById('lowercase') },
+            number: { regex: /[0-9]/, element: document.getElementById('number') },
+            special: { regex: /[!@#$%^&*(),.?":{}|<>]/, element: document.getElementById('special') }
+        };
+
+        // Check password strength and update UI
+        function checkPasswordStrength(password) {
+            let strength = 0;
+            let metRequirements = 0;
+
+            // Check each requirement
+            for (const [key, requirement] of Object.entries(requirements)) {
+                if (requirement.regex.test(password)) {
+                    requirement.element.classList.remove('requirement-not-met');
+                    requirement.element.classList.add('requirement-met');
+                    metRequirements++;
+                } else {
+                    requirement.element.classList.remove('requirement-met');
+                    requirement.element.classList.add('requirement-not-met');
+                }
+            }
+
+            // Calculate strength based on met requirements
+            const totalRequirements = Object.keys(requirements).length;
+            strength = (metRequirements / totalRequirements) * 100;
+
+            // Update strength indicator
+            strengthIndicator.className = 'password-strength';
+            if (strength <= 25) {
+                strengthIndicator.classList.add('strength-weak');
+            } else if (strength <= 50) {
+                strengthIndicator.classList.add('strength-medium');
+            } else if (strength <= 75) {
+                strengthIndicator.classList.add('strength-strong');
+            } else {
+                strengthIndicator.classList.add('strength-very-strong');
+            }
+
+            // Show/hide requirements list
+            if (password.length > 0 && metRequirements < totalRequirements) {
+                 passwordRequirementsDiv.style.display = 'block';
+            } else {
+                 passwordRequirementsDiv.style.display = 'none';
+            }
+
+            return metRequirements === totalRequirements;
+        }
+
+        // Check passwords match
+        function passwordsMatch() {
+            return passwordInput.value === confirmPasswordInput.value;
+        }
+
+        // Real-time password strength checking
+        passwordInput.addEventListener('input', () => {
+            checkPasswordStrength(passwordInput.value);
+            hideError(); // Hide error when typing
+        });
+
+        confirmPasswordInput.addEventListener('input', () => {
+            hideError(); // Hide error when typing
+        });
+
+        // Form submission
+        registerForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = emailInput.value;
+            const username = usernameInput.value; // Get username value
+            const password = passwordInput.value;
+
+            // Validate password strength
+            if (!checkPasswordStrength(password)) {
+                displayError('Password does not meet all requirements.');
+                // Make sure requirements are visible if validation fails on submit
+                passwordRequirementsDiv.style.display = 'block';
+                return;
+            }
+
+            // Validate password match
+            if (!passwordsMatch()) {
+                displayError('Passwords do not match.');
+                 return;
+            }
+
+            hideError(); // Hide error before attempting registration
+
+            // Proceed with registration
+            // Note: The 'username' variable is captured here but not sent to Firebase Auth directly.
+            // You need to save it to a database (like Firestore) after successful Firebase Auth registration.
+            registerUser(email, password)
+                .then(() => {
+                    // Registration successful in Firebase Auth, now handle username storage separately if needed.
+                    console.log("Firebase Auth registration successful. Consider saving username to a database.");
+                    window.location.href = 'verify_email_reminder.html';
+                })
+                .catch((error) => {
+                    console.error('Registration error:', error);
+                    displayError(error.message);
+                });
+        });
+
+        function displayError(message) {
+            errorMessageDiv.textContent = message;
+            errorMessageDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            errorMessageDiv.style.display = 'none';
+        }
+
+        // Initial check to hide requirements on load if password field is empty
+        checkPasswordStrength(passwordInput.value);
+    </script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 
